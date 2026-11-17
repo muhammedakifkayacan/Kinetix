@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="tr" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kinetix — Premiere Pro Mask to Transform</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/icon-normal.svg" alt="Kinetix" class="brand-icon" />
+        <div class="brand-text">
+          <span class="brand-name">Kinetix</span>
+          <span class="brand-tag" data-i18n="brandTag">2 Tık / 0 AE</span>
+        </div>
+      </div>
+      <div class="env-badges">
+        <span id="seqBadge" class="badge badge-muted" data-i18n="seqWaiting">Sekans bekleniyor</span>
+        <span id="cepBadge" class="badge badge-offline" data-i18n="localCep">Yerel CEP</span>
+        <select id="langSelect" class="lang-select" aria-label="Language">
+          <option value="tr">TR</option>
+          <option value="en">EN</option>
+          <option value="ar">AR</option>
+        </select>
+      </div>
+    </header>
+
+    <!-- VIEW 1: Onboarding / Track Mask Check -->
+    <main id="onboardingView" class="onboarding-view">
+      <div class="hero-card">
+        <div class="hero-icon-wrap">
+          <img src="assets/icon-normal.svg" alt="" class="hero-icon" />
+        </div>
+        <h1 class="hero-title" data-i18n="heroTitle">Track Mask yaptın mı?</h1>
+        <p class="hero-desc" data-i18n="heroDesc">
+          Effect Controls üzerinden maskeni oluşturup ileri doğru izledikten sonra
+          zaman çizelgesinde klibi seç ve veriyi yükle.
+        </p>
+
+        <button id="btnLoadMask" class="btn btn-primary btn-hero">
+          <span class="btn-icon">◎</span>
+          <span data-i18n="loadMaskBtn">Load Premiere Mask</span>
+        </button>
+
+        <div class="hero-secondary">
+          <button id="btnLoadPrproj" class="btn-link" data-i18n="readPrproj">.prproj XML Oku</button>
+          <span class="dot">·</span>
+          <button id="btnToggleJson" class="btn-link" data-i18n="jsonSample">JSON / Örnek Veri</button>
+        </div>
+
+        <div id="jsonDrawer" class="drawer hidden">
+          <textarea id="jsonInput" rows="4" placeholder='[{"time":0,"vertices":[{"x":0.4,"y":0.4},...]}]'></textarea>
+          <div class="drawer-actions">
+            <button id="btnLoadSample" class="btn btn-ghost btn-sm" data-i18n="loadSample">Örnek Maske Yükle</button>
+            <button id="btnParseJson" class="btn btn-secondary btn-sm" data-i18n="importJson">JSON İçe Aktar</button>
+          </div>
+        </div>
+
+        <div id="onboardingStatus" class="status-bar hidden"></div>
+      </div>
+    </main>
+
+    <!-- VIEW 2: Main Workspace (Shown after mask is loaded) -->
+    <main id="workspaceView" class="workspace-view hidden">
+      <!-- Loaded Mask Summary & Preview -->
+      <section class="card">
+        <div class="card-header">
+          <span class="step-pill">✓</span>
+          <h2 data-i18n="maskLoadedTitle">Maske Yüklendi</h2>
+          <span id="maskSummaryBadge" class="badge badge-subtle" data-i18n="noData">Veri yok</span>
+          <button id="btnResetMask" class="btn btn-ghost btn-xs" data-i18n="reloadBtn" title="Yeni maske yükle">
+            Yeniden Yükle
+          </button>
+        </div>
+
+        <div class="preview-wrap">
+          <canvas id="previewCanvas" width="320" height="120"></canvas>
+          <div class="preview-meta">
+            <span id="previewFrameLabel">Kare: - / -</span>
+            <input id="frameScrubber" type="range" min="0" max="0" value="0" />
+          </div>
+        </div>
+      </section>
+
+      <!-- Mode & Axes -->
+      <section class="card">
+        <div class="card-header">
+          <span class="step-pill">2</span>
+          <h2 data-i18n="modeAxesTitle">Mod ve Eksenler</h2>
+        </div>
+
+        <div class="segmented" role="tablist">
+          <button class="seg-btn active" data-mode="pin" data-i18n="modePin">2D Pinning</button>
+          <button class="seg-btn" data-mode="cornerpin" data-i18n="modeCorner">Corner Pin</button>
+          <button class="seg-btn" data-mode="stabilize" data-i18n="modeStabilize">Stabilize</button>
+        </div>
+
+        <div id="axesGroup" class="axes-grid">
+          <label class="check-pill">
+            <input type="checkbox" id="chkPosition" checked />
+            <span>Position</span>
+          </label>
+          <label class="check-pill">
+            <input type="checkbox" id="chkScale" checked />
+            <span>Scale</span>
+          </label>
+          <label class="check-pill">
+            <input type="checkbox" id="chkRotation" checked />
+            <span>Rotation</span>
+          </label>
+        </div>
+
+        <div class="controls-grid">
+          <div class="field">
+            <label for="selTargetEffect" data-i18n="targetEffectLabel">Hedef Efekt</label>
+            <select id="selTargetEffect">
+              <option value="transform" data-i18n="effectTransform">Transform (Yerleşik)</option>
+              <option value="motion" data-i18n="effectMotion">Motion (Temel)</option>
+              <option value="cornerpin" data-i18n="effectCornerPin">Corner Pin (4 Nokta)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="numRefFrame" data-i18n="refFrameLabel">Referans Kare</label>
+            <input type="number" id="numRefFrame" min="0" value="0" />
+          </div>
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-label">
+            <span data-i18n="smoothingLabel">Yumuşatma (Smoothing)</span>
+            <span id="smoothValue">0%</span>
+          </div>
+          <input type="range" id="rngSmoothing" min="0" max="100" value="0" />
+        </div>
+
+        <div class="controls-grid offset-grid">
+          <div class="field">
+            <label for="numOffsetX" data-i18n="offsetXLabel">Offset X (px)</label>
+            <input type="number" id="numOffsetX" value="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="numOffsetY" data-i18n="offsetYLabel">Offset Y (px)</label>
+            <input type="number" id="numOffsetY" value="0" step="1" />
+          </div>
+        </div>
+      </section>
+
+      <!-- Apply -->
+      <section class="card">
+        <div class="card-header">
+          <span class="step-pill">3</span>
+          <h2 data-i18n="applySectionTitle">Hedef Katmana Uygula</h2>
+        </div>
+
+        <div class="apply-row">
+          <button id="btnApplyTracking" class="btn btn-primary" data-i18n="applyBtn">
+            Apply Tracking
+          </button>
+          <button id="btnStabilize" class="btn btn-accent" data-i18n="stabilizeBtn">
+            Stabilize (-X, -Y)
+          </button>
+        </div>
+
+        <div id="statusBar" class="status-bar" data-i18n="defaultStatus">
+          Zaman çizelgesinde hedef katmanı seçip Apply Tracking butonuna basın.
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span data-i18n="footerText">Sıfır Eklenti Bağımlılığı · %100 Çevrimdışı Yerel Motor</span>
+    </footer>
+  </div>
+
+  <script src="lib/CSInterface.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/mathEngine.js"></script>
+  <script src="js/prprojParser.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

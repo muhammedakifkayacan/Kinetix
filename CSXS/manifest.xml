@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest Version="11.0"
+                   ExtensionBundleId="com.kinetix.premiere"
+                   ExtensionBundleVersion="1.0.0"
+                   ExtensionBundleName="Kinetix"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.kinetix.premiere.panel" Version="1.0.0" />
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="PPRO" Version="[15.0,99.9]" />
+    </HostList>
+    <LocaleList>
+      <Locale Code="All" />
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="11.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.kinetix.premiere.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./client/index.html</MainPath>
+          <ScriptPath>./host/host.jsx</ScriptPath>
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--mixed-context</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>Kinetix</Menu>
+          <Geometry>
+            <Size>
+              <Height>620</Height>
+              <Width>360</Width>
+            </Size>
+            <MinSize>
+              <Height>440</Height>
+              <Width>300</Width>
+            </MinSize>
+            <MaxSize>
+              <Height>1200</Height>
+              <Width>640</Width>
+            </MaxSize>
+          </Geometry>
+          <Icons>
+            <Icon Type="Normal">./client/assets/icon-normal.svg</Icon>
+            <Icon Type="RollOver">./client/assets/icon-normal.svg</Icon>
+            <Icon Type="DarkNormal">./client/assets/icon-normal.svg</Icon>
+            <Icon Type="DarkRollOver">./client/assets/icon-normal.svg</Icon>
+          </Icons>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>
