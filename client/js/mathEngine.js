@@ -240,6 +240,8 @@
 
     var rawX = [];
     var rawY = [];
+    var rawAnchorX = [];
+    var rawAnchorY = [];
     var rawScale = [];
     var rawRot = [];
     var cornerTracks = [];
@@ -262,18 +264,21 @@
       }
 
       if (mode === 'stabilize' || mode === 'centerlock') {
-        var targetX = lockToCenter
-          ? seqWidth - c.x
-          : seqWidth / 2 - (c.x - refCentroid.x);
-        var targetY = lockToCenter
-          ? seqHeight - c.y
-          : seqHeight / 2 - (c.y - refCentroid.y);
-        var invScale = scalePct > 1e-3 ? Math.max(20, Math.min(500, (10000 / scalePct))) : 100;
+        // Set Anchor Point to the tracked subject's centroid (c.x, c.y) so that
+        // Scale and Rotation pivot directly around the subject, while Position
+        // places that subject at the exact frame center (centerlock) or reference point (stabilize).
+        var targetX = lockToCenter ? seqWidth / 2 : refCentroid.x;
+        var targetY = lockToCenter ? seqHeight / 2 : refCentroid.y;
+        var invScale = scalePct > 1e-3 ? Math.max(50, Math.min(350, (10000 / scalePct))) : 100;
+        rawAnchorX.push(c.x);
+        rawAnchorY.push(c.y);
         rawX.push(targetX);
         rawY.push(targetY);
         rawScale.push(invScale);
         rawRot.push(-angleDeg);
       } else {
+        rawAnchorX.push(null);
+        rawAnchorY.push(null);
         rawX.push(c.x);
         rawY.push(c.y);
         rawScale.push(scalePct);
@@ -285,15 +290,19 @@
     }
 
     var unwrappedRot = unwrapAngles(rawRot);
-    // Re-center unwrapped rotation so reference frame stays at 0 (before offset)
     var refRot = unwrappedRot[refIdx];
     for (var r = 0; r < unwrappedRot.length; r++) {
       unwrappedRot[r] -= refRot;
     }
 
+    var isInverse = (mode === 'stabilize' || mode === 'centerlock');
     var smX = smoothSeries(rawX, smoothing);
     var smY = smoothSeries(rawY, smoothing);
-    var smScale = smoothSeries(rawScale, smoothing);
+    var smAnchorX = isInverse ? smoothSeries(rawAnchorX, smoothing) : rawAnchorX;
+    var smAnchorY = isInverse ? smoothSeries(rawAnchorY, smoothing) : rawAnchorY;
+    // Apply gentle minimum smoothing to inverse scale to avoid bounding-box breathing
+    var scaleSmooth = isInverse ? Math.max(smoothing, 25) : smoothing;
+    var smScale = smoothSeries(rawScale, scaleSmooth);
     var smRot = smoothSeries(unwrappedRot, smoothing);
 
     // Smooth corner pins independently if smoothing > 0
@@ -324,10 +333,15 @@
         cornersNorm[cornerNames[cIdx]] = [cpx / seqWidth, cpy / seqHeight];
       }
 
+      var ax = isInverse ? smAnchorX[k] : null;
+      var ay = isInverse ? smAnchorY[k] : null;
+
       keyframes.push({
         time: pixelFrames[k].time,
         position: [px, py],
         positionNorm: [px / seqWidth, py / seqHeight],
+        anchorPoint: isInverse ? [ax, ay] : null,
+        anchorPointNorm: isInverse ? [ax / seqWidth, ay / seqHeight] : null,
         scale: sc,
         rotation: rot,
         corners: cornersPx,

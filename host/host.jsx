@@ -383,6 +383,8 @@ function kinetix_applyTrackingToSelection(payloadJson) {
 
     var times = [];
     var posNormVals = [];
+    var anchorNormVals = [];
+    var hasAnchor = false;
     var scaleVals = [];
     var rotVals = [];
     var ulVals = [];
@@ -394,6 +396,10 @@ function kinetix_applyTrackingToSelection(payloadJson) {
       var kf = keyframes[i];
       times.push(kf.time);
       posNormVals.push(kf.positionNorm);
+      if (kf.anchorPointNorm) {
+        anchorNormVals.push(kf.anchorPointNorm);
+        hasAnchor = true;
+      }
       scaleVals.push(kf.scale);
       rotVals.push(kf.rotation);
       if (kf.cornersNorm) {
@@ -482,12 +488,21 @@ function kinetix_applyTrackingToSelection(payloadJson) {
           continue;
         }
 
+        if (hasAnchor && axes.position) {
+          var anchorProp = _kxFindProp(comp, ['Anchor Point', 'Dayanak Noktası']);
+          var ka = _kxWriteKeyframes(anchorProp, clipTimes, anchorNormVals);
+          if (ka > maxKeys) maxKeys = ka;
+        }
         if (axes.position) {
           var posProp = _kxFindProp(comp, ['Position', 'Konum']);
           var kp = _kxWriteKeyframes(posProp, clipTimes, posNormVals);
           if (kp > maxKeys) maxKeys = kp;
         }
         if (axes.scale) {
+          var uniformProp = _kxFindProp(comp, ['Uniform Scale', 'Tekdüze Ölçek']);
+          if (uniformProp && typeof uniformProp.setValue === 'function') {
+            try { uniformProp.setValue(true, true); } catch (ue) {}
+          }
           var scaleProps = _kxFindAllProps(comp, [
             'Scale',
             'Scale Height',
