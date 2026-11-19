@@ -92,10 +92,11 @@
           <h2 data-i18n="modeAxesTitle">Mod ve Eksenler</h2>
         </div>
 
-        <div class="segmented" role="tablist">
+        <div class="segmented segmented-4" role="tablist">
           <button class="seg-btn active" data-mode="pin" data-i18n="modePin">2D Pinning</button>
           <button class="seg-btn" data-mode="cornerpin" data-i18n="modeCorner">Corner Pin</button>
           <button class="seg-btn" data-mode="stabilize" data-i18n="modeStabilize">Stabilize</button>
+          <button class="seg-btn" data-mode="centerlock" data-i18n="modeCenterLock">Merkeze Kilitle</button>
         </div>
 
         <div id="axesGroup" class="axes-grid">
@@ -163,6 +164,9 @@
             Stabilize (-X, -Y)
           </button>
         </div>
+        <button id="btnCenterLock" class="btn btn-centerlock btn-full" data-i18n="centerLockBtn">
+          Merkeze Kilitle (Ortala)
+        </button>
 
         <div id="statusBar" class="status-bar" data-i18n="defaultStatus">
           Zaman çizelgesinde hedef katmanı seçip Apply Tracking butonuna basın.

@@ -57,24 +57,42 @@ test('2D Pinning computes exact position, scale, and rotation via Procrustes', f
   assert.ok(Math.abs(res.keyframes[1].rotation - 45) < 0.5);
 });
 
-test('Inverse Stabilization locks moving subject to frame center (-X, -Y)', function () {
+test('Center Lock keeps moving subject pinned to exact frame center', function () {
   var frames = [
-    { time: 0, vertices: makeQuad(0.5, 0.5, 50, 50, 0) },
-    { time: 1, vertices: makeQuad(0.625, 0.5, 50, 50, 10) } // +240px right of center
+    { time: 0, vertices: makeQuad(0.25, 0.5, 50, 50, 0) },  // x=480
+    { time: 1, vertices: makeQuad(0.625, 0.5, 50, 50, 10) } // x=1200 (+240px right of center)
   ];
 
   var res = mathEngine.solveTracking(frames, {
     seqWidth: 1920,
     seqHeight: 1080,
     normalizedInput: true,
-    mode: 'stabilize',
-    lockToCenter: true
+    mode: 'centerlock'
   });
 
+  // Frame 0 subject is at x=480 (-480px), so layer shifts +480px -> Position.x = 1440
+  assert.ok(Math.abs(res.keyframes[0].position[0] - 1440) < 0.01);
   // Frame 1 subject is at x=1200 (+240px), so layer shifts -240px -> Position.x = 720
   assert.ok(Math.abs(res.keyframes[1].position[0] - 720) < 0.01);
   assert.ok(Math.abs(res.keyframes[1].position[1] - 540) < 0.01);
   assert.ok(Math.abs(res.keyframes[1].rotation - (-10)) < 0.5);
+});
+
+test('Stabilize mode removes camera shake relative to reference frame', function () {
+  var frames = [
+    { time: 0, vertices: makeQuad(0.5, 0.5, 50, 50, 0) },
+    { time: 1, vertices: makeQuad(0.625, 0.5, 50, 50, 0) }
+  ];
+
+  var res = mathEngine.solveTracking(frames, {
+    seqWidth: 1920,
+    seqHeight: 1080,
+    normalizedInput: true,
+    mode: 'stabilize'
+  });
+
+  assert.ok(Math.abs(res.keyframes[0].position[0] - 960) < 0.01);
+  assert.ok(Math.abs(res.keyframes[1].position[0] - 720) < 0.01);
 });
 
 test('Corner Pin orders 4 corners [TL, TR, BR, BL] and outputs normalized coords', function () {

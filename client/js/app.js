@@ -57,6 +57,7 @@
   var numOffsetY = document.getElementById('numOffsetY');
   var btnApplyTracking = document.getElementById('btnApplyTracking');
   var btnStabilize = document.getElementById('btnStabilize');
+  var btnCenterLock = document.getElementById('btnCenterLock');
   var statusBar = document.getElementById('statusBar');
 
   function t(key, vars) {
@@ -139,6 +140,7 @@
     var hasData = state.rawFrames.length > 0;
     btnApplyTracking.disabled = !hasData;
     btnStabilize.disabled = !hasData;
+    if (btnCenterLock) btnCenterLock.disabled = !hasData;
     frameScrubber.disabled = !hasData;
 
     if (hasData) {
@@ -441,13 +443,20 @@
   });
 
   btnApplyTracking.addEventListener('click', function () {
-    executeApply(state.mode === 'stabilize' ? 'pin' : state.mode);
+    executeApply(state.mode);
   });
 
   btnStabilize.addEventListener('click', function () {
     setMode('stabilize');
     executeApply('stabilize');
   });
+
+  if (btnCenterLock) {
+    btnCenterLock.addEventListener('click', function () {
+      setMode('centerlock');
+      executeApply('centerlock');
+    });
+  }
 
   btnResetMask.addEventListener('click', function () {
     setLoadedMask([], '');

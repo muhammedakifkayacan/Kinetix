@@ -221,9 +221,9 @@
     var seqHeight = opts.seqHeight || 1080;
     var normalizedInput = opts.normalizedInput !== false;
     var refIdx = Math.max(0, Math.min(frames.length - 1, opts.referenceIndex || 0));
-    var mode = opts.mode || 'pin'; // 'pin' | 'stabilize' | 'cornerpin'
+    var mode = opts.mode || 'pin'; // 'pin' | 'stabilize' | 'centerlock' | 'cornerpin'
     var smoothing = Math.max(0, Math.min(100, opts.smoothing || 0));
-    var lockToCenter = opts.lockToCenter !== false;
+    var lockToCenter = mode === 'centerlock' ? true : (opts.lockToCenter === true);
     var offset = opts.offset || { x: 0, y: 0, scale: 0, rotation: 0 };
 
     var pixelFrames = frames.map(function (f) {
@@ -261,7 +261,7 @@
         angleDeg = ((curPrincipal - refPrincipal) * 180) / Math.PI;
       }
 
-      if (mode === 'stabilize') {
+      if (mode === 'stabilize' || mode === 'centerlock') {
         var targetX = lockToCenter
           ? seqWidth - c.x
           : seqWidth / 2 - (c.x - refCentroid.x);
