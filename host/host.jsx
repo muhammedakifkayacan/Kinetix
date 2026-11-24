@@ -392,6 +392,10 @@ function kinetix_applyTrackingToSelection(payloadJson) {
     var lrVals = [];
     var llVals = [];
 
+    var seqW = seq.frameSizeHorizontal || 1920;
+    var seqH = seq.frameSizeVertical || 1080;
+    var maxSafeScale = Math.min(600, (12000 / Math.max(seqW, seqH, 1)) * 100);
+
     for (var i = 0; i < keyframes.length; i++) {
       var kf = keyframes[i];
       times.push(kf.time);
@@ -400,7 +404,11 @@ function kinetix_applyTrackingToSelection(payloadJson) {
         anchorNormVals.push(kf.anchorPointNorm);
         hasAnchor = true;
       }
-      scaleVals.push(kf.scale);
+      var safeSc = Number(kf.scale);
+      if (isNaN(safeSc) || !isFinite(safeSc)) safeSc = 100;
+      if (safeSc < 5) safeSc = 5;
+      if (safeSc > maxSafeScale) safeSc = maxSafeScale;
+      scaleVals.push(safeSc);
       rotVals.push(kf.rotation);
       if (kf.cornersNorm) {
         ulVals.push(kf.cornersNorm.upperLeft);

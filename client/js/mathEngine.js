@@ -317,11 +317,16 @@
       });
     }
 
+    // Premiere Pro's Transform effect throws a fatal error if any buffer dimension > 30000px.
+    // Cap max scale so max(seqWidth, seqHeight) * (scale/100) stays safely <= 12000px.
+    var maxDim = Math.max(seqWidth, seqHeight, 1);
+    var maxSafeScale = Math.min(600, (12000 / maxDim) * 100);
+
     var keyframes = [];
     for (var k = 0; k < pixelFrames.length; k++) {
       var px = smX[k] + (offset.x || 0);
       var py = smY[k] + (offset.y || 0);
-      var sc = Math.max(1, smScale[k] + (offset.scale || 0));
+      var sc = Math.max(5, Math.min(maxSafeScale, smScale[k] + (offset.scale || 0)));
       var rot = smRot[k] + (offset.rotation || 0);
 
       var cornersPx = {};

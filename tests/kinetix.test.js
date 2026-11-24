@@ -155,6 +155,23 @@ test('AI Rotoscope fallback handles varying vertex counts across frames', functi
   assert.ok(res.keyframes[1].scale > 150);
 });
 
+test('Scale is safely clamped to avoid Premiere 30000px Transform buffer error', function () {
+  var frames = [
+    { time: 0, vertices: makeQuad(0.5, 0.5, 5, 5, 0) },     // tiny 10x10px ref
+    { time: 1, vertices: makeQuad(0.5, 0.5, 500, 500, 0) }  // 100x growth -> 10000%
+  ];
+
+  var res = mathEngine.solveTracking(frames, {
+    seqWidth: 3840,
+    seqHeight: 2160,
+    normalizedInput: true,
+    mode: 'pin'
+  });
+
+  // On 4K (3840px), 3840 * (scale / 100) must stay <= 12000px (< 30000px limit)
+  assert.ok(res.keyframes[1].scale <= 312.6);
+});
+
 test('Angle unwrapping avoids 360-degree jumps', function () {
   var unwrapped = mathEngine.unwrapAngles([170, 178, -175, -165]);
   assert.deepEqual(unwrapped, [170, 178, 185, 195]);
