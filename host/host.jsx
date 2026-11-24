@@ -324,11 +324,33 @@ function _kxFindAllProps(comp, names) {
   return out;
 }
 
+function _kxReadBaseValue(prop, localPlayheadSec, fallbackVal) {
+  if (!prop) return fallbackVal;
+  try {
+    if (typeof prop.isTimeVarying === 'function' && prop.isTimeVarying() && typeof prop.getValueAtTime === 'function') {
+      var pt = new Time();
+      pt.seconds = Number(localPlayheadSec);
+      var vt = prop.getValueAtTime(pt);
+      if (typeof vt !== 'undefined' && vt !== null) return vt;
+    }
+  } catch (e1) {}
+  try {
+    var v = prop.getValue();
+    if (typeof v !== 'undefined' && v !== null) return v;
+  } catch (e2) {}
+  return fallbackVal;
+}
+
 function _kxWriteKeyframes(prop, times, values) {
   if (!prop || !times || times.length === 0) return 0;
   var written = 0;
   try {
     if (typeof prop.setTimeVarying === 'function') {
+      try {
+        if (typeof prop.isTimeVarying === 'function' && prop.isTimeVarying()) {
+          prop.setTimeVarying(false);
+        }
+      } catch (ce) {}
       prop.setTimeVarying(true);
     }
     for (var i = 0; i < times.length; i++) {
@@ -426,7 +448,11 @@ function kinetix_applyTrackingToSelection(payloadJson) {
     var appliedCount = 0;
     var srcStart = typeof payload.sourceClipStartSeconds === 'number' ? payload.sourceClipStartSeconds : null;
     var srcIn = typeof payload.sourceClipInPointSeconds === 'number' ? payload.sourceClipInPointSeconds : 0;
+    var playheadPos = seq.getPlayerPosition();
+    var playheadSec = playheadPos ? parseFloat(playheadPos.seconds) : 0;
+    if (isNaN(playheadSec)) playheadSec = 0;
     var t0 = times.length > 0 ? times[0] : 0;
+    var srcTimeOrigin = (t0 >= srcIn - 0.01 && srcIn > 0) ? srcIn : 0;
 
     for (var s = 0; s < sel.length; s++) {
       var clip = sel[s];
@@ -436,23 +462,58 @@ function kinetix_applyTrackingToSelection(payloadJson) {
         continue;
       }
 
-      // Compute clip-internal keyframe times aligned on the sequence timeline
       var clipStart = clip.start ? parseFloat(clip.start.seconds) : 0;
       var clipEnd = clip.end ? parseFloat(clip.end.seconds) : (clipStart + 3600);
       var clipIn = clip.inPoint ? parseFloat(clip.inPoint.seconds) : 0;
       if (isNaN(clipStart)) clipStart = 0;
       if (isNaN(clipIn)) clipIn = 0;
-      var targetBaseTime = clipIn;
+
+      // Map source keyframes onto sequence timeline and slice to target clip range when overlapping
+      var activeIdx = [];
+      var clipTimes = [];
+      var activeSeqTimes = [];
 
       if (srcStart !== null && !isNaN(srcStart)) {
-        if (srcStart >= clipStart - 0.05 && srcStart <= clipEnd + 0.05) {
-          targetBaseTime = clipIn + Math.max(0, srcStart - clipStart);
+        for (var ti = 0; ti < times.length; ti++) {
+          var st = srcStart + (times[ti] - srcTimeOrigin);
+          if (st >= clipStart - 0.04 && st <= clipEnd + 0.04) {
+            activeIdx.push(ti);
+            activeSeqTimes.push(st);
+            clipTimes.push(clipIn + Math.max(0, st - clipStart));
+          }
         }
       }
 
-      var clipTimes = [];
-      for (var ti = 0; ti < times.length; ti++) {
-        clipTimes.push(targetBaseTime + (times[ti] - t0));
+      // Fallback if target clip is placed at a non-overlapping point on the timeline
+      if (activeIdx.length < 2) {
+        activeIdx = [];
+        clipTimes = [];
+        activeSeqTimes = [];
+        for (var fi = 0; fi < times.length; fi++) {
+          activeIdx.push(fi);
+          var fst = clipStart + (times[fi] - t0);
+          activeSeqTimes.push(fst);
+          clipTimes.push(clipIn + (times[fi] - t0));
+        }
+      }
+
+      // Choose reference frame: Playhead position inside target clip by default,
+      // or explicit user Reference Frame if set > 0.
+      var clampedPlayhead = Math.max(clipStart, Math.min(clipEnd, playheadSec));
+      var localPlayheadSec = clipIn + Math.max(0, clampedPlayhead - clipStart);
+      var refOrigIdx = activeIdx[0];
+
+      if (payload.useCustomRef && typeof payload.referenceIndex === 'number') {
+        refOrigIdx = Math.max(0, Math.min(times.length - 1, payload.referenceIndex));
+      } else {
+        var bestDist = 1e9;
+        for (var ai = 0; ai < activeIdx.length; ai++) {
+          var d = Math.abs(activeSeqTimes[ai] - clampedPlayhead);
+          if (d < bestDist) {
+            bestDist = d;
+            refOrigIdx = activeIdx[ai];
+          }
+        }
       }
 
       var maxKeys = 0;
@@ -469,15 +530,23 @@ function kinetix_applyTrackingToSelection(payloadJson) {
           details.push({ name: clip.name, status: 'error', message: 'Corner Pin efekti eklenemedi.' });
           continue;
         }
+        var ulSub = [], urSub = [], lrSub = [], llSub = [];
+        for (var ci = 0; ci < activeIdx.length; ci++) {
+          var cOrig = activeIdx[ci];
+          ulSub.push(ulVals[cOrig]);
+          urSub.push(urVals[cOrig]);
+          lrSub.push(lrVals[cOrig]);
+          llSub.push(llVals[cOrig]);
+        }
         var ulProp = _kxFindProp(cpComp, ['Upper Left', 'Sol Üst']);
         var urProp = _kxFindProp(cpComp, ['Upper Right', 'Sağ Üst']);
         var lrProp = _kxFindProp(cpComp, ['Lower Right', 'Sağ Alt']);
         var llProp = _kxFindProp(cpComp, ['Lower Left', 'Sol Alt']);
 
-        var k1 = _kxWriteKeyframes(ulProp, clipTimes, ulVals);
-        var k2 = _kxWriteKeyframes(urProp, clipTimes, urVals);
-        var k3 = _kxWriteKeyframes(lrProp, clipTimes, lrVals);
-        var k4 = _kxWriteKeyframes(llProp, clipTimes, llVals);
+        var k1 = _kxWriteKeyframes(ulProp, clipTimes, ulSub);
+        var k2 = _kxWriteKeyframes(urProp, clipTimes, urSub);
+        var k3 = _kxWriteKeyframes(lrProp, clipTimes, lrSub);
+        var k4 = _kxWriteKeyframes(llProp, clipTimes, llSub);
         maxKeys = Math.max(k1, k2, k3, k4);
         if (maxKeys > 0) appliedCount++;
         details.push({ name: clip.name, status: maxKeys > 0 ? 'ok' : 'error', effect: 'Corner Pin', keys: maxKeys });
@@ -502,23 +571,30 @@ function kinetix_applyTrackingToSelection(payloadJson) {
 
         if (hasAnchor && axes.position) {
           var anchorProp = _kxFindProp(comp, ['Anchor Point', 'Dayanak Noktası']);
-          var ka = _kxWriteKeyframes(anchorProp, clipTimes, anchorNormVals);
+          var anchorSub = [];
+          for (var ani = 0; ani < activeIdx.length; ani++) {
+            anchorSub.push(anchorNormVals[activeIdx[ani]]);
+          }
+          var ka = _kxWriteKeyframes(anchorProp, clipTimes, anchorSub);
           if (ka > maxKeys) maxKeys = ka;
         }
         if (axes.position) {
           var posProp = _kxFindProp(comp, ['Position', 'Konum']);
-          var finalPosVals = posNormVals;
+          var finalPosVals = [];
           if (!hasAnchor && posProp) {
-            var basePos = [0.5, 0.5];
-            try {
-              var curPos = posProp.getValue();
-              if (curPos && curPos.length >= 2) {
-                basePos = [Number(curPos[0]), Number(curPos[1])];
-              }
-            } catch (pe) {}
-            finalPosVals = [];
-            for (var pi = 0; pi < deltaPosVals.length; pi++) {
-              finalPosVals.push([basePos[0] + deltaPosVals[pi][0], basePos[1] + deltaPosVals[pi][1]]);
+            var curPos = _kxReadBaseValue(posProp, localPlayheadSec, [0.5, 0.5]);
+            var basePos = (curPos && curPos.length >= 2) ? [Number(curPos[0]), Number(curPos[1])] : [0.5, 0.5];
+            var refPos = posNormVals[refOrigIdx];
+            for (var pi = 0; pi < activeIdx.length; pi++) {
+              var pOrig = posNormVals[activeIdx[pi]];
+              finalPosVals.push([
+                basePos[0] + (pOrig[0] - refPos[0]),
+                basePos[1] + (pOrig[1] - refPos[1])
+              ]);
+            }
+          } else {
+            for (var p2 = 0; p2 < activeIdx.length; p2++) {
+              finalPosVals.push(posNormVals[activeIdx[p2]]);
             }
           }
           var kp = _kxWriteKeyframes(posProp, clipTimes, finalPosVals);
@@ -538,22 +614,22 @@ function kinetix_applyTrackingToSelection(payloadJson) {
           if (scaleProps.length === 0) {
             scaleProps = _kxFindAllProps(comp, ['Scale Width', 'Ölçek Genişliği']);
           }
+          var refScale = Math.max(5, scaleVals[refOrigIdx] || 100);
           for (var sp = 0; sp < scaleProps.length; sp++) {
-            var finalScaleVals = scaleVals;
+            var finalScaleVals = [];
             if (!hasAnchor) {
-              var baseSc = 100;
-              try {
-                var curSc = scaleProps[sp].getValue();
-                if (typeof curSc === 'number' && isFinite(curSc) && curSc > 0) {
-                  baseSc = curSc;
-                }
-              } catch (se) {}
-              finalScaleVals = [];
-              for (var si = 0; si < scaleFactors.length; si++) {
-                var vSc = baseSc * scaleFactors[si];
+              var curSc = _kxReadBaseValue(scaleProps[sp], localPlayheadSec, 100);
+              var baseSc = (typeof curSc === 'number' && isFinite(curSc) && curSc > 0) ? curSc : 100;
+              for (var si = 0; si < activeIdx.length; si++) {
+                var ratio = scaleVals[activeIdx[si]] / refScale;
+                var vSc = baseSc * ratio;
                 if (vSc < 5) vSc = 5;
                 if (vSc > maxSafeScale) vSc = maxSafeScale;
                 finalScaleVals.push(vSc);
+              }
+            } else {
+              for (var s2 = 0; s2 < activeIdx.length; s2++) {
+                finalScaleVals.push(scaleVals[activeIdx[s2]]);
               }
             }
             var ks = _kxWriteKeyframes(scaleProps[sp], clipTimes, finalScaleVals);
@@ -562,18 +638,17 @@ function kinetix_applyTrackingToSelection(payloadJson) {
         }
         if (axes.rotation) {
           var rotProp = _kxFindProp(comp, ['Rotation', 'Döndürme']);
-          var finalRotVals = rotVals;
+          var finalRotVals = [];
           if (!hasAnchor && rotProp) {
-            var baseRot = 0;
-            try {
-              var curRot = rotProp.getValue();
-              if (typeof curRot === 'number' && isFinite(curRot)) {
-                baseRot = curRot;
-              }
-            } catch (re) {}
-            finalRotVals = [];
-            for (var ri = 0; ri < rotVals.length; ri++) {
-              finalRotVals.push(baseRot + rotVals[ri]);
+            var curRot = _kxReadBaseValue(rotProp, localPlayheadSec, 0);
+            var baseRot = (typeof curRot === 'number' && isFinite(curRot)) ? curRot : 0;
+            var refRot = rotVals[refOrigIdx] || 0;
+            for (var ri = 0; ri < activeIdx.length; ri++) {
+              finalRotVals.push(baseRot + (rotVals[activeIdx[ri]] - refRot));
+            }
+          } else {
+            for (var r2 = 0; r2 < activeIdx.length; r2++) {
+              finalRotVals.push(rotVals[activeIdx[r2]]);
             }
           }
           var kr = _kxWriteKeyframes(rotProp, clipTimes, finalRotVals);

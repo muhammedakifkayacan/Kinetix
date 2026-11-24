@@ -299,11 +299,12 @@
     var activeMode = overrideMode || state.mode;
     var targetEffect = activeMode === 'cornerpin' ? 'cornerpin' : selTargetEffect.value;
 
+    var refVal = parseInt(numRefFrame.value, 10) || 0;
     var solved = mathEngine.solveTracking(state.rawFrames, {
       seqWidth: state.seqWidth,
       seqHeight: state.seqHeight,
       normalizedInput: true,
-      referenceIndex: parseInt(numRefFrame.value, 10) || 0,
+      referenceIndex: refVal,
       mode: activeMode,
       smoothing: parseInt(rngSmoothing.value, 10) || 0,
       offset: {
@@ -318,6 +319,8 @@
       targetEffect: targetEffect,
       sourceClipStartSeconds: state.clipStartSeconds,
       sourceClipInPointSeconds: state.clipInPointSeconds,
+      useCustomRef: refVal > 0,
+      referenceIndex: refVal,
       axes: {
         position: chkPosition.checked,
         scale: chkScale.checked,
@@ -383,7 +386,10 @@
         // Fallback to offline .prmf (Premiere 2026 AI Object Mask) & .prproj XML extraction
         if (state.projectPath && typeof require === 'function') {
           try {
-            var xmlMasks = prprojParser.loadMasksFromPrproj(state.projectPath, state.clipName);
+            var xmlMasks = prprojParser.loadMasksFromPrproj(state.projectPath, {
+              clipName: state.clipName,
+              clipStartSeconds: state.clipStartSeconds
+            });
             if (xmlMasks.length > 0) {
               setLoadedMask(xmlMasks[0].frames, xmlMasks[0].name || '.prproj XML');
               return;

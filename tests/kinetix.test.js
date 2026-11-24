@@ -291,3 +291,35 @@ test('prprojParser decodes Premiere 2026 Pen Mask M2 104-byte Tracker rotation &
 
   assert.ok(Math.abs(solved.keyframes[1].rotation - 3.7) < 0.3);
 });
+
+test('prprojParser matches Tracker mask to the selected VideoClipTrackItem Start time', function () {
+  var bufA = Buffer.alloc(104);
+  bufA.writeUInt32LE(1, 0);
+  [1, 0, 0, 0, 1, 0, 0.2, 0.2, 1].forEach(function (v, i) { bufA.writeFloatLE(v, 4 + 36 + i * 4); });
+
+  var bufB = Buffer.alloc(104);
+  bufB.writeUInt32LE(1, 0);
+  [1, 0, 0, 0, 1, 0, 0.8, 0.7, 1].forEach(function (v, i) { bufB.writeFloatLE(v, 4 + 36 + i * 4); });
+
+  var t5 = String(5 * prprojParser.PPRO_TICKS_PER_SECOND);
+  var t12 = String(12 * prprojParser.PPRO_TICKS_PER_SECOND);
+
+  var xml = [
+    '<PremiereData>',
+    '  <VideoClipTrackItem ObjectID="10"><ClipTrackItem><TrackItem><Start>' + t5 + '</Start></TrackItem></ClipTrackItem><SelectionComponents ObjectRef="11"/></VideoClipTrackItem>',
+    '  <VideoComponentChain ObjectID="11"><Component ObjectRef="12"/></VideoComponentChain>',
+    '  <VideoFilterComponent ObjectID="12"><Param ObjectRef="13"/></VideoFilterComponent>',
+    '  <ArbVideoComponentParam ObjectID="13"><ParameterControlType>22</ParameterControlType><Name>Tracker</Name><Keyframes>0,' + bufA.toString('base64') + ',0;</Keyframes></ArbVideoComponentParam>',
+    '  <VideoClipTrackItem ObjectID="20"><ClipTrackItem><TrackItem><Start>' + t12 + '</Start></TrackItem></ClipTrackItem><SelectionComponents ObjectRef="21"/></VideoClipTrackItem>',
+    '  <VideoComponentChain ObjectID="21"><Component ObjectRef="22"/></VideoComponentChain>',
+    '  <VideoFilterComponent ObjectID="22"><Param ObjectRef="23"/></VideoFilterComponent>',
+    '  <ArbVideoComponentParam ObjectID="23"><ParameterControlType>22</ParameterControlType><Name>Tracker</Name><Keyframes>0,' + bufB.toString('base64') + ',0;</Keyframes></ArbVideoComponentParam>',
+    '</PremiereData>'
+  ].join('\n');
+
+  var matched = prprojParser.parseMasksFromXml(xml, { clipStartSeconds: 12.0 });
+  assert.equal(matched.length, 2);
+  assert.equal(matched[0].clipStartSeconds, 12);
+  var c = mathEngine.computeCentroid(matched[0].frames[0].vertices);
+  assert.ok(Math.abs(c.x - 0.8) < 0.01);
+});

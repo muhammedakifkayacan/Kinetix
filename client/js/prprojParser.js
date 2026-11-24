@@ -374,17 +374,70 @@
     return null;
   }
 
-  function parseMasksFromXml(xmlText, clipNameFilter) {
+  /**
+   * Builds a lightweight ObjectRef -> parent map so each ArbVideoComponentParam
+   * can be matched to its owning VideoClipTrackItem (<Start> ticks) on multi-clip timelines.
+   */
+  function buildTrackItemStartMap(xmlText) {
+    var parentOf = {};
+    var trackItemStartSec = {};
+
+    // Index all ObjectID blocks and their outgoing ObjectRef links
+    var objRegex = /<([A-Za-z0-9_.]+)\b[^>]*\bObjectID="(\d+)"[^>]*>([\s\S]*?)<\/\1>/g;
+    var m;
+    while ((m = objRegex.exec(xmlText)) !== null) {
+      var tag = m[1];
+      var oid = m[2];
+      var body = m[3];
+
+      if (tag === 'VideoClipTrackItem') {
+        var stMatch = body.match(/<Start>(\d+)<\/Start>/);
+        if (stMatch) {
+          trackItemStartSec[oid] = parseFloat(stMatch[1]) / PPRO_TICKS_PER_SECOND;
+        }
+      }
+
+      var refRegex = /\bObjectRef="(\d+)"/g;
+      var rm;
+      while ((rm = refRegex.exec(body)) !== null) {
+        if (!parentOf[rm[1]]) {
+          parentOf[rm[1]] = oid;
+        }
+      }
+    }
+
+    return function resolveClipStartSec(paramOid) {
+      var cur = paramOid;
+      for (var depth = 0; depth < 8 && cur; depth++) {
+        if (typeof trackItemStartSec[cur] === 'number') {
+          return trackItemStartSec[cur];
+        }
+        cur = parentOf[cur];
+      }
+      return null;
+    };
+  }
+
+  function parseMasksFromXml(xmlText, clipFilter) {
     if (!xmlText || typeof xmlText !== 'string') {
       return [];
     }
 
+    var filterStartSec =
+      clipFilter && typeof clipFilter === 'object' && typeof clipFilter.clipStartSeconds === 'number'
+        ? clipFilter.clipStartSeconds
+        : null;
+
+    var resolveStart = filterStartSec !== null ? buildTrackItemStartMap(xmlText) : null;
     var masks = [];
 
-    var arbRegex = /<ArbVideoComponentParam\b[^>]*>([\s\S]*?)<\/ArbVideoComponentParam>/gi;
+    var arbRegex = /<ArbVideoComponentParam\b([^>]*)>([\s\S]*?)<\/ArbVideoComponentParam>/gi;
     var arbMatch;
     while ((arbMatch = arbRegex.exec(xmlText)) !== null) {
-      var arbBlock = arbMatch[1];
+      var arbAttrs = arbMatch[1] || '';
+      var arbBlock = arbMatch[2];
+      var oidMatch = arbAttrs.match(/\bObjectID="(\d+)"/);
+      var paramOid = oidMatch ? oidMatch[1] : null;
       var nameMatch = arbBlock.match(/<Name>([^<]+)<\/Name>/i);
       var ctrlMatch = arbBlock.match(/<ParameterControlType>(\d+)<\/ParameterControlType>/i);
       var paramName = nameMatch ? nameMatch[1].trim() : '';
@@ -401,9 +454,11 @@
 
       var arbFrames = extractArbKeyframes(arbBlock);
       if (arbFrames.length > 0) {
+        var ownerStart = resolveStart && paramOid ? resolveStart(paramOid) : null;
         masks.push({
           name: paramName || 'Tracker',
           source: 'prproj-arb',
+          clipStartSeconds: ownerStart,
           frameCount: arbFrames.length,
           frames: arbFrames
         });
@@ -411,6 +466,13 @@
     }
 
     if (masks.length > 0) {
+      if (filterStartSec !== null) {
+        masks.sort(function (a, b) {
+          var da = typeof a.clipStartSeconds === 'number' ? Math.abs(a.clipStartSeconds - filterStartSec) : 1e9;
+          var db = typeof b.clipStartSeconds === 'number' ? Math.abs(b.clipStartSeconds - filterStartSec) : 1e9;
+          return da - db;
+        });
+      }
       return masks;
     }
 
