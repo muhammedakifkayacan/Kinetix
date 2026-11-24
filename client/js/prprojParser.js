@@ -13,8 +13,35 @@
       throw new Error('Node.js runtime is required to read .prproj files.');
     }
     var fs = require('fs');
+    var path = require('path');
     var zlib = require('zlib');
-    var buf = fs.readFileSync(filePath);
+
+    // If an Auto-Save for the same project is newer than the saved .prproj,
+    // use the newer Auto-Save so unsaved recent mask tracks are still picked up.
+    var targetPath = filePath;
+    try {
+      var baseMtime = fs.statSync(filePath).mtimeMs;
+      var projDir = path.dirname(filePath);
+      var projName = path.basename(filePath, path.extname(filePath));
+      var autoSaveDir = path.join(projDir, 'Adobe Premiere Pro Auto-Save');
+      if (fs.existsSync(autoSaveDir)) {
+        var entries = fs.readdirSync(autoSaveDir);
+        var bestMtime = baseMtime;
+        for (var i = 0; i < entries.length; i++) {
+          var fn = entries[i];
+          if (fn.indexOf(projName + '--') === 0 && fn.slice(-7).toLowerCase() === '.prproj') {
+            var full = path.join(autoSaveDir, fn);
+            var st = fs.statSync(full);
+            if (st.mtimeMs > bestMtime) {
+              bestMtime = st.mtimeMs;
+              targetPath = full;
+            }
+          }
+        }
+      }
+    } catch (e) {}
+
+    var buf = fs.readFileSync(targetPath);
     if (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
       return zlib.gunzipSync(buf).toString('utf8');
     }
@@ -299,29 +326,50 @@
     if (buf.length < 40) return null;
 
     var version = buf.readUInt32LE(0);
-    if (version === 1 && buf.length >= 40) {
-      var m = [];
-      for (var i = 0; i < 9; i++) {
-        m.push(buf.readFloatLE(4 + i * 4));
+    if (version !== 1) return null;
+
+    var refOffsets = [
+      { x: -0.1, y: -0.1 },
+      { x: 0.1, y: -0.1 },
+      { x: 0.1, y: 0.1 },
+      { x: -0.1, y: 0.1 }
+    ];
+
+    // Premiere Pro 2026 Pen/Mask Tracker (104 bytes: version + M1(9f) + M2(9f) + extra(7f))
+    // M2 is a row-vector 3x3 matrix: [dx, dy, 1] * M2 -> (nx, ny, w)
+    if (buf.length >= 76) {
+      var m2 = [];
+      for (var j = 0; j < 9; j++) {
+        m2.push(buf.readFloatLE(4 + 36 + j * 4));
       }
-      var allFinite = m.every(function (v) { return isFinite(v) && Math.abs(v) < 1e4; });
-      if (allFinite && Math.abs(m[8]) > 1e-5) {
-        var refCorners = [
-          { x: -0.1, y: -0.1 },
-          { x: 0.1, y: -0.1 },
-          { x: 0.1, y: 0.1 },
-          { x: -0.1, y: 0.1 }
-        ];
-        return refCorners.map(function (pt) {
-          var sx = pt.x + 0.5;
-          var sy = pt.y + 0.5;
-          var w = m[6] * sx + m[7] * sy + m[8];
+      var m2Ok = m2.every(function (v) { return isFinite(v) && Math.abs(v) < 1e4; });
+      if (m2Ok && Math.abs(m2[8]) > 1e-5 && (Math.abs(m2[6]) > 1e-6 || Math.abs(m2[7]) > 1e-6 || Math.abs(m2[1]) > 1e-6 || Math.abs(m2[3]) > 1e-6)) {
+        return refOffsets.map(function (pt) {
+          var w = m2[2] * pt.x + m2[5] * pt.y + m2[8];
           if (Math.abs(w) < 1e-6) w = 1;
-          var nx = (m[0] * sx + m[1] * sy + m[2]) / w;
-          var ny = (m[3] * sx + m[4] * sy + m[5]) / w;
+          var nx = (m2[0] * pt.x + m2[3] * pt.y + m2[6]) / w;
+          var ny = (m2[1] * pt.x + m2[4] * pt.y + m2[7]) / w;
           return { x: nx, y: ny };
         });
       }
+    }
+
+    // Fallback: 3x3 row-major matrix at offset 4
+    var m = [];
+    for (var i = 0; i < 9; i++) {
+      m.push(buf.readFloatLE(4 + i * 4));
+    }
+    var allFinite = m.every(function (v) { return isFinite(v) && Math.abs(v) < 1e4; });
+    if (allFinite && Math.abs(m[8]) > 1e-5) {
+      return refOffsets.map(function (pt) {
+        var sx = pt.x + 0.5;
+        var sy = pt.y + 0.5;
+        var w = m[6] * sx + m[7] * sy + m[8];
+        if (Math.abs(w) < 1e-6) w = 1;
+        var nx = (m[0] * sx + m[1] * sy + m[2]) / w;
+        var ny = (m[3] * sx + m[4] * sy + m[5]) / w;
+        return { x: nx, y: ny };
+      });
     }
     return null;
   }
@@ -345,6 +393,7 @@
       var isMaskOrTracker =
         paramName === 'Tracker' ||
         paramName === 'Mask Path' ||
+        paramName === 'Path' ||
         paramName.toLowerCase().indexOf('mask') !== -1 ||
         ctrlType === '22';
 

@@ -261,3 +261,30 @@ test('prprojParser extracts rotation angle from zlib mask alpha chunk via image 
   var deg = (angleRad * 180) / Math.PI;
   assert.ok(Math.abs(deg - 45) < 3);
 });
+
+test('prprojParser decodes Premiere 2026 Pen Mask M2 104-byte Tracker rotation & position', function () {
+  var buf = Buffer.alloc(104);
+  buf.writeUInt32LE(1, 0);
+  // Real M2 row-vector matrix from Premiere 2026 Pen Mask Tracker (with rotation + translation)
+  var m2 = [0.988, -0.0754, 0.0, 0.2384, 0.988, 0.0, 0.5568, 0.2943, 1.0];
+  for (var i = 0; i < 9; i++) {
+    buf.writeFloatLE(m2[i], 4 + 36 + i * 4);
+  }
+  var b64 = buf.toString('base64');
+  var quad = prprojParser.decodeArbBase64ToQuad(b64);
+  assert.ok(quad && quad.length === 4);
+
+  // Also test a second frame with different rotation so Procrustes yields non-zero delta rotation
+  var buf2 = Buffer.alloc(104);
+  buf2.writeUInt32LE(1, 0);
+  var m2b = [0.9963, -0.0393, 0.0, 0.1243, 0.9963, 0.0, 0.5648, 0.2941, 1.0];
+  for (var j = 0; j < 9; j++) {
+    buf2.writeFloatLE(m2b[j], 4 + 36 + j * 4);
+  }
+  var solved = mathEngine.solveTracking([
+    { time: 0, vertices: quad },
+    { time: 1, vertices: prprojParser.decodeArbBase64ToQuad(buf2.toString('base64')) }
+  ], { seqWidth: 1080, seqHeight: 1920, mode: 'pin' });
+
+  assert.ok(Math.abs(solved.keyframes[1].rotation - 3.7) < 0.3);
+});
