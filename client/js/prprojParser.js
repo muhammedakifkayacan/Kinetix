@@ -520,20 +520,16 @@
   }
 
   function loadMasksFromPrproj(filePath, clipNameFilter) {
-    // 1. Check Premiere Pro 2026 binary .prmf AI Object Masks first
-    var prmfMasks = loadPrmfMasksForProject(filePath);
-    if (prmfMasks.length > 0 && prmfMasks[0].frames.length > 1) {
-      return prmfMasks;
-    }
-
-    // 2. Check .prproj XML
+    // 1. Check .prproj XML first so polygon/3x3 Tracker masks (with full Rotation)
+    // are never shadowed by older .prmf bounding-box caches in the project folder.
     var xml = readPrprojXml(filePath);
     var xmlMasks = parseMasksFromXml(xml, clipNameFilter);
     if (xmlMasks.length > 0) {
       return xmlMasks;
     }
 
-    return prmfMasks;
+    // 2. Fallback to Premiere Pro 2026 binary .prmf AI Object Masks
+    return loadPrmfMasksForProject(filePath);
   }
 
   var api = {
