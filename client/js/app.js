@@ -476,6 +476,7 @@
 
   btnResetMask.addEventListener('click', function () {
     setLoadedMask([], '');
+    setStatus(t('maskCleared'), 'ok');
   });
 
   if (langSelect) {
