@@ -383,6 +383,8 @@ function kinetix_applyTrackingToSelection(payloadJson) {
 
     var times = [];
     var posNormVals = [];
+    var deltaPosVals = [];
+    var scaleFactors = [];
     var anchorNormVals = [];
     var hasAnchor = false;
     var scaleVals = [];
@@ -400,6 +402,8 @@ function kinetix_applyTrackingToSelection(payloadJson) {
       var kf = keyframes[i];
       times.push(kf.time);
       posNormVals.push(kf.positionNorm);
+      deltaPosVals.push(kf.deltaPosNorm || [0, 0]);
+      scaleFactors.push(typeof kf.scaleFactor === 'number' ? kf.scaleFactor : 1);
       if (kf.anchorPointNorm) {
         anchorNormVals.push(kf.anchorPointNorm);
         hasAnchor = true;
@@ -503,7 +507,21 @@ function kinetix_applyTrackingToSelection(payloadJson) {
         }
         if (axes.position) {
           var posProp = _kxFindProp(comp, ['Position', 'Konum']);
-          var kp = _kxWriteKeyframes(posProp, clipTimes, posNormVals);
+          var finalPosVals = posNormVals;
+          if (!hasAnchor && posProp) {
+            var basePos = [0.5, 0.5];
+            try {
+              var curPos = posProp.getValue();
+              if (curPos && curPos.length >= 2) {
+                basePos = [Number(curPos[0]), Number(curPos[1])];
+              }
+            } catch (pe) {}
+            finalPosVals = [];
+            for (var pi = 0; pi < deltaPosVals.length; pi++) {
+              finalPosVals.push([basePos[0] + deltaPosVals[pi][0], basePos[1] + deltaPosVals[pi][1]]);
+            }
+          }
+          var kp = _kxWriteKeyframes(posProp, clipTimes, finalPosVals);
           if (kp > maxKeys) maxKeys = kp;
         }
         if (axes.scale) {
@@ -514,19 +532,51 @@ function kinetix_applyTrackingToSelection(payloadJson) {
           var scaleProps = _kxFindAllProps(comp, [
             'Scale',
             'Scale Height',
-            'Scale Width',
             'Ölçek',
-            'Ölçek Yüksekliği',
-            'Ölçek Genişliği'
+            'Ölçek Yüksekliği'
           ]);
+          if (scaleProps.length === 0) {
+            scaleProps = _kxFindAllProps(comp, ['Scale Width', 'Ölçek Genişliği']);
+          }
           for (var sp = 0; sp < scaleProps.length; sp++) {
-            var ks = _kxWriteKeyframes(scaleProps[sp], clipTimes, scaleVals);
+            var finalScaleVals = scaleVals;
+            if (!hasAnchor) {
+              var baseSc = 100;
+              try {
+                var curSc = scaleProps[sp].getValue();
+                if (typeof curSc === 'number' && isFinite(curSc) && curSc > 0) {
+                  baseSc = curSc;
+                }
+              } catch (se) {}
+              finalScaleVals = [];
+              for (var si = 0; si < scaleFactors.length; si++) {
+                var vSc = baseSc * scaleFactors[si];
+                if (vSc < 5) vSc = 5;
+                if (vSc > maxSafeScale) vSc = maxSafeScale;
+                finalScaleVals.push(vSc);
+              }
+            }
+            var ks = _kxWriteKeyframes(scaleProps[sp], clipTimes, finalScaleVals);
             if (ks > maxKeys) maxKeys = ks;
           }
         }
         if (axes.rotation) {
           var rotProp = _kxFindProp(comp, ['Rotation', 'Döndürme']);
-          var kr = _kxWriteKeyframes(rotProp, clipTimes, rotVals);
+          var finalRotVals = rotVals;
+          if (!hasAnchor && rotProp) {
+            var baseRot = 0;
+            try {
+              var curRot = rotProp.getValue();
+              if (typeof curRot === 'number' && isFinite(curRot)) {
+                baseRot = curRot;
+              }
+            } catch (re) {}
+            finalRotVals = [];
+            for (var ri = 0; ri < rotVals.length; ri++) {
+              finalRotVals.push(baseRot + rotVals[ri]);
+            }
+          }
+          var kr = _kxWriteKeyframes(rotProp, clipTimes, finalRotVals);
           if (kr > maxKeys) maxKeys = kr;
         }
         if (maxKeys > 0) appliedCount++;

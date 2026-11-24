@@ -322,6 +322,9 @@
     var maxDim = Math.max(seqWidth, seqHeight, 1);
     var maxSafeScale = Math.min(600, (12000 / maxDim) * 100);
 
+    var refPx = smX[refIdx] + (offset.x || 0);
+    var refPy = smY[refIdx] + (offset.y || 0);
+
     var keyframes = [];
     for (var k = 0; k < pixelFrames.length; k++) {
       var px = smX[k] + (offset.x || 0);
@@ -345,6 +348,8 @@
         time: pixelFrames[k].time,
         position: [px, py],
         positionNorm: [px / seqWidth, py / seqHeight],
+        deltaPosNorm: [(px - refPx) / seqWidth, (py - refPy) / seqHeight],
+        scaleFactor: sc / 100,
         anchorPoint: isInverse ? [ax, ay] : null,
         anchorPointNorm: isInverse ? [ax / seqWidth, ay / seqHeight] : null,
         scale: sc,

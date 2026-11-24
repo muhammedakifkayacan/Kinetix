@@ -53,6 +53,9 @@ test('2D Pinning computes exact position, scale, and rotation via Procrustes', f
 
   assert.ok(Math.abs(res.keyframes[1].position[0] - 1440) < 0.01);
   assert.ok(Math.abs(res.keyframes[1].position[1] - 270) < 0.01);
+  assert.ok(Math.abs(res.keyframes[1].deltaPosNorm[0] - 0.5) < 0.01);
+  assert.ok(Math.abs(res.keyframes[1].deltaPosNorm[1] - (-0.25)) < 0.01);
+  assert.ok(Math.abs(res.keyframes[1].scaleFactor - 2.0) < 0.01);
   assert.ok(Math.abs(res.keyframes[1].scale - 200) < 0.5);
   assert.ok(Math.abs(res.keyframes[1].rotation - 45) < 0.5);
 });
