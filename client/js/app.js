@@ -258,8 +258,24 @@
       }
     }
 
+    var rotStr = '0.0°';
+    var scaleStr = '100%';
+    try {
+      var previewSolved = mathEngine.solveTracking(state.rawFrames, {
+        seqWidth: state.seqWidth,
+        seqHeight: state.seqHeight,
+        normalizedInput: true,
+        referenceIndex: parseInt(numRefFrame.value, 10) || 0,
+        mode: state.mode === 'cornerpin' ? 'pin' : state.mode
+      });
+      if (previewSolved && previewSolved.keyframes[idx]) {
+        rotStr = previewSolved.keyframes[idx].rotation.toFixed(1) + '°';
+        scaleStr = Math.round(previewSolved.keyframes[idx].scale) + '%';
+      }
+    } catch (e) {}
+
     previewFrameLabel.textContent = t('framePrefix') + ': ' + (idx + 1) + ' / ' + state.rawFrames.length +
-      ' (' + frame.time.toFixed(2) + 's)';
+      ' (' + frame.time.toFixed(2) + 's · ' + scaleStr + ' · ' + rotStr + ')';
   }
 
   function setMode(newMode) {

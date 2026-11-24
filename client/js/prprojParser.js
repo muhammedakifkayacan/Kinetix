@@ -22,6 +22,57 @@
   }
 
   /**
+   * Attempts to decompress a .prmf per-frame mask alpha chunk via zlib and
+   * compute its principal orientation angle (radians) using 2nd-order image moments.
+   * Returns null if the chunk uses an unsupported codec or has isotropic moments.
+   */
+  function tryExtractChunkAngleRad(chunkBuf, w, h) {
+    if (!chunkBuf || chunkBuf.length < 4 || typeof require !== 'function') return null;
+    if (w <= 2 || h <= 2 || w * h > 4000000) return null;
+    var zlib = require('zlib');
+    var raw = null;
+    try {
+      raw = zlib.inflateSync(chunkBuf);
+    } catch (e1) {
+      try {
+        raw = zlib.inflateRawSync(chunkBuf);
+      } catch (e2) {
+        return null;
+      }
+    }
+    if (!raw || raw.length < w * h) return null;
+
+    var m00 = 0, m10 = 0, m01 = 0;
+    var len = w * h;
+    for (var idx = 0; idx < len; idx++) {
+      var val = raw[idx];
+      if (val > 20) {
+        var x = idx % w;
+        var y = (idx / w) | 0;
+        m00 += val;
+        m10 += x * val;
+        m01 += y * val;
+      }
+    }
+    if (m00 <= 0) return null;
+    var cx = m10 / m00;
+    var cy = m01 / m00;
+    var mu20 = 0, mu02 = 0, mu11 = 0;
+    for (var j = 0; j < len; j++) {
+      var v = raw[j];
+      if (v > 20) {
+        var dx = (j % w) - cx;
+        var dy = ((j / w) | 0) - cy;
+        mu20 += dx * dx * v;
+        mu02 += dy * dy * v;
+        mu11 += dx * dy * v;
+      }
+    }
+    if (Math.abs(mu20 - mu02) < 1e-3 && Math.abs(mu11) < 1e-3) return null;
+    return 0.5 * Math.atan2(2 * mu11, mu20 - mu02);
+  }
+
+  /**
    * Parses a Premiere Pro 2026 binary .prmf (Premiere Mask File) containing
    * a FlatBuffer index table of tracked AI Object Mask frames.
    */
@@ -62,8 +113,10 @@
       };
 
       var fTicks = getFieldOff(1);
+      var fDataOff = getFieldOff(2);
       var fRect1 = getFieldOff(3);
       var fDim = getFieldOff(4);
+      var fDataSz = getFieldOff(6);
       var fRect2 = getFieldOff(7);
       var fTDim = getFieldOff(8);
 
@@ -74,6 +127,15 @@
       var r1y = fb.readInt32LE(eo + fRect1 + 4);
       var r1w = fb.readInt32LE(eo + fRect1 + 8);
       var r1h = fb.readInt32LE(eo + fRect1 + 12);
+
+      var angleRad = null;
+      if (fDataOff && fDataSz) {
+        var dOff = fb.readUInt32LE(eo + fDataOff);
+        var dSz = fb.readUInt32LE(eo + fDataSz);
+        if (dOff >= 32 && dSz > 0 && dOff + dSz <= idxOff) {
+          angleRad = tryExtractChunkAngleRad(buf.subarray(dOff, dOff + dSz), r1w, r1h);
+        }
+      }
 
       var frameW = fDim ? fb.readInt32LE(eo + fDim) : 1080;
       var frameH = fDim ? fb.readInt32LE(eo + fDim + 4) : 1920;
@@ -100,19 +162,41 @@
         }
       }
 
-      var x0 = bx / frameW;
-      var y0 = by / frameH;
-      var x1 = (bx + bw) / frameW;
-      var y1 = (by + bh) / frameH;
-
-      frames.push({
-        time: ticks / PPRO_TICKS_PER_SECOND,
-        vertices: [
+      var verts;
+      if (angleRad !== null) {
+        var cx = (bx + bw * 0.5) / frameW;
+        var cy = (by + bh * 0.5) / frameH;
+        var hwPx = bw * 0.5;
+        var hhPx = bh * 0.5;
+        var cosA = Math.cos(angleRad);
+        var sinA = Math.sin(angleRad);
+        verts = [
+          [-hwPx, -hhPx],
+          [hwPx, -hhPx],
+          [hwPx, hhPx],
+          [-hwPx, hhPx]
+        ].map(function (pt) {
+          return {
+            x: cx + (pt[0] * cosA - pt[1] * sinA) / frameW,
+            y: cy + (pt[0] * sinA + pt[1] * cosA) / frameH
+          };
+        });
+      } else {
+        var x0 = bx / frameW;
+        var y0 = by / frameH;
+        var x1 = (bx + bw) / frameW;
+        var y1 = (by + bh) / frameH;
+        verts = [
           { x: x0, y: y0 },
           { x: x1, y: y0 },
           { x: x1, y: y1 },
           { x: x0, y: y1 }
-        ]
+        ];
+      }
+
+      frames.push({
+        time: ticks / PPRO_TICKS_PER_SECOND,
+        vertices: verts
       });
     }
 
@@ -456,6 +540,7 @@
     PPRO_TICKS_PER_SECOND: PPRO_TICKS_PER_SECOND,
     readPrprojXml: readPrprojXml,
     parsePrmfBuffer: parsePrmfBuffer,
+    tryExtractChunkAngleRad: tryExtractChunkAngleRad,
     loadPrmfMasksForProject: loadPrmfMasksForProject,
     decodeArbBase64ToQuad: decodeArbBase64ToQuad,
     parseMasksFromXml: parseMasksFromXml,

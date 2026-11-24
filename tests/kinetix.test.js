@@ -243,3 +243,21 @@ test('prprojParser extracts Premiere 2026 ArbVideoComponentParam Tracker base64 
   assert.equal(masks[0].frames.length, 2);
   assert.ok(Math.abs(masks[0].frames[0].vertices[0].x - 0.55) < 0.001);
 });
+
+test('prprojParser extracts rotation angle from zlib mask alpha chunk via image moments', function () {
+  var w = 40, h = 40;
+  var raw = Buffer.alloc(w * h);
+  // Draw a diagonal bar (~45 deg) inside the mask buffer
+  for (var y = 8; y < 32; y++) {
+    for (var x = 8; x < 32; x++) {
+      if (Math.abs(x - y) <= 2) {
+        raw[y * w + x] = 255;
+      }
+    }
+  }
+  var compressed = zlib.deflateSync(raw);
+  var angleRad = prprojParser.tryExtractChunkAngleRad(compressed, w, h);
+  assert.ok(angleRad !== null);
+  var deg = (angleRad * 180) / Math.PI;
+  assert.ok(Math.abs(deg - 45) < 3);
+});
